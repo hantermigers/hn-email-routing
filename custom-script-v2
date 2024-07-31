@@ -1,0 +1,71 @@
+const usersMap = new Map([
+    [
+        ['tom@firstdomain.de', 'tom@seconddomain.de'],
+        {
+            primary: 'tom@gmail.com',
+            backup: 'tom@gmx.net',
+        },
+    ],
+    [
+        ['greta@firstdomain.de'],
+        {
+            primary: 'greta@gmail.com',
+            backup: 'greta@gmx.de',
+        },
+    ],
+    [
+        ['chrisi@firstdomain.de', 'christine@firstdomain.de'],
+        {
+            primary: 'christine@gmail.com',
+            backup: 'christine@gmx.de',
+        },
+    ],
+    [
+        ['alan@firstdomain.de'],
+        {
+            primary: 'alan@gmail.com',
+            backup: 'alan@gmx.de',
+        },
+    ],
+]);
+
+const defaultUser = {
+    primary: 'admin@gmail.com',
+    backup: 'admin@gmx.de',
+};
+
+const telegramBotUrl = "https://api.telegram.org/bot$TOKEN/sendMessage?chat_id=$ID&text=";
+
+async function notifyTelegram(message) {
+    await fetch(telegramBotUrl + message, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    }).catch(error => {});
+}
+
+export default {
+    async email(message, env, ctx) {
+
+        let targetUser = defaultUser;
+
+        for (const [aliases, user] of usersMap.entries()) {
+            if (aliases.some(alias => alias.toLowerCase() === message.to.toLowerCase())) {
+                targetUser = user;
+                break;
+            }
+        }
+
+        try {
+            await message.forward(targetUser.primary);
+        } catch (error) {
+            await notifyTelegram(`Gmail rejected!\n\nFrom: ${message.from}\nTo: ${message.to}\nSubject: ${message.headers.get('subject')}\n\nGmail error: ${error.message}`);
+            try {
+                await message.forward(targetUser.backup);
+            } catch (backupError) {
+                message.setReject(`${backupError.message}\n${error.message}`);
+
+                await notifyTelegram(`Mail fully rejected!\n\nFrom: ${message.from}\nTo: ${message.to}\nSubject: ${message.headers.get('subject')}\n\nGMX error: ${backupError.message}\n\nGmail error: ${error.message}`);
+            }
+        }
+    }
+};
