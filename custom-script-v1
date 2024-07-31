@@ -1,0 +1,62 @@
+export default {
+  async email(message, env, ctx) {
+
+  //alias lists using RegEx. Examples below will allow for plus-addressing and subdomain addressing.
+  // (I have configured wildcard (*) DNS records to catch all sub-domains). 
+    const user1_alias = [
+      "user1+.*@mydomain.net",
+      ".*@user1.mydomain.net",      
+      ];
+
+    const user2_alias = [
+      "user2+.*@mydomain.net",
+      ".*@user2.mydomain.net",      
+      ];
+
+  //primary emails
+    const user1_primary = 'user1@gmail.com';  
+    const user2_primary = 'user2@gmail.com';  
+    const user3_primary = 'user3@gmail.com';  
+
+  //backup emails (still going to primary email, but via improvmx instead of directly from Cloudflare).
+  //you will need to create a subdomain (ex. 'imx') setup using improvmx, and improvmx aliases pointed to primary email
+    const user1_backup = 'user1@imx.mydomain.net';  
+    const user2_backup = 'user2@imx.mydomain.net';   
+    const user3_backup = 'user3@imx.mydomain.net';  
+  
+  //final catchall if primary and backup fails
+    const user3_outlook = 'user1@outlook.com';  
+
+  //This tests alias against message "To:", showing the value of [true] if matching.
+    const is_user1_alias = RegExp(user1_alias.join("|"), "i").test(message.to);
+    const is_user2_alias = RegExp(user2_alias.join("|"), "i").test(message.to);
+  
+  //action to take 
+    //inside Try is to route to backup (ImprovMX to Gmail) to get by Cloudflare to Gmail issues.
+    //outside Try is to route to Outlook (final catchall) if both primary and backup fails.
+    var gmail_error;
+    try {
+      switch (true){
+        case (is_user1_alias):
+          try {await message.forward(user1_primary);}
+          catch(gmail_error) {await message.forward(user1_backup);}
+          break;
+        case (is_user2_alias):
+          try {await message.forward(user2_primary);}
+          catch(gmail_error) {await message.forward(user2_backup);}
+          break;
+        default:
+          try {await message.forward(user3_primary);}
+          catch(gmail_error) {await message.forward(user3_backup);}
+          break;
+      }
+     }
+    catch(improvmx_error){
+      try {await message.forward(user3_outlook);}
+      catch(outlook_error) {
+        message.setReject(outlook_error.message);
+        return message.setReject(outlook_error.message + '\n' + improvmx_error.message + '\n' + gmail_error.message);
+        }
+    }
+  }
+}
